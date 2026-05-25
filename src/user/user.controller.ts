@@ -6,6 +6,7 @@ import {
   Patch,
   Param,
   Delete,
+  Query,
   UseInterceptors,
   UploadedFile,
   ParseIntPipe,
@@ -18,6 +19,7 @@ import { plainToInstance } from 'class-transformer';
 import { UserService } from './user.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { FilterUserDto } from './dto/filter-user.dto';
 import { UserResponseDto } from './dto/user-response.dto';
 
 @Controller('user')
@@ -47,8 +49,8 @@ export class UserController {
   }
 
   @Get()
-  findAll() {
-    return this.userService.findAll();
+  findAll(@Query() filters: FilterUserDto) {
+    return this.userService.findAll(filters);
   }
 
   @Get(':id')

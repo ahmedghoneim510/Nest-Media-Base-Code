@@ -4,7 +4,10 @@ import { Repository } from 'typeorm';
 import { User } from './entities/user.entity';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { FilterUserDto } from './dto/filter-user.dto';
 import { MediaService, MediaCollection, MediaOwner } from '../media';
+import { applyFilters, paginatedResponse } from '../common';
+import { UserScopes } from './scopes';
 
 @Injectable()
 export class UserService {
@@ -26,24 +29,46 @@ export class UserService {
   }
 
   /**
-   * List all users with avatar loaded (2 queries total, no N+1).
+   * List users with filters, search, pagination, and sorting.
+   * Uses generic applyFilters (common) + UserScopes (local).
    */
-  async findAll(): Promise<{ data: User[]; count: number }> {
-    const users = await this.userRepository.find();
-    const ids = users.map((u) => u.id);
+  async findAll(filters: FilterUserDto) {
+    const { search, status, page = 1, limit = 10, sortBy = 'created_at', order = 'DESC' } = filters;
 
-    // Single query: get latest avatar for all users
+    const qb = this.userRepository.createQueryBuilder('user');
+
+    // Generic filters (common utility — works for any entity)
+    applyFilters(qb, 'user', {
+      search: search
+        ? { term: search, fields: ['firstName', 'lastName', 'email'] }
+        : undefined,
+      filters: { status },
+      sort: {
+        field: sortBy,
+        order,
+        allowed: ['created_at', 'firstName', 'lastName', 'email', 'age'],
+      },
+      pagination: { page, limit },
+    });
+
+    // Local scopes (User-specific) — chain as needed:
+    // UserScopes.active(qb);
+    // UserScopes.recentlyActive(qb, 7);
+
+    const [users, count] = await qb.getManyAndCount();
+
+    // Batch load avatars
+    const ids = users.map((u) => u.id);
     const avatarMap = await this.mediaService.getLatestForMany(
       MediaOwner.USER,
       ids,
       MediaCollection.AVATAR,
     );
-
     for (const user of users) {
       user.avatar = avatarMap.get(user.id) ?? null;
     }
 
-    return { data: users, count: users.length };
+    return paginatedResponse(users, count, page, limit);
   }
 
   async findOne(id: number): Promise<User> {
